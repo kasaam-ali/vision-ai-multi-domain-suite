@@ -66,9 +66,7 @@ if uploaded_file is not None:
                     else:
                         st.success("✅ **No Tumor Detected** at this confidence threshold.")
 
-                    if total_count > 0:
-                        with st.expander("📋 View Bounding Boxes & Class Predictions"):
-                            st.json(detections)
+
                 else:
                     st.error(f"API Error ({response.status_code}): {response.text}")
 

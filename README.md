@@ -37,6 +37,18 @@ The applications are intentionally separated so each model can be developed, tes
 
 > ⚠️ **Important:** This project is for educational, research, and prototyping purposes. Brain tumor and acne results are not medical diagnoses, and weapon results are not a replacement for trained security personnel or certified screening systems.
 
+## Live Deployed Applications
+
+The Streamlit interfaces are deployed and available online:
+
+| Application | Live link | Purpose |
+|---|---|---|
+| 🧠 Brain Tumor Detection | [Open Brain Tumor App](https://vision-ai-multi-domain-su.streamlit.app/) | Upload a brain MRI and review predicted tumor regions |
+| 🩺 Skin Acne Detection | [Open Acne Detection App](https://acne-detection-sys.streamlit.app/) | Upload a skin or face image and review acne detections |
+| 🛡️ Weapon Detection | [Open Weapon Detection App](https://weapon-detection-sys.streamlit.app/) | Upload an X-ray image and review potential weapon detections |
+
+> **Deployment note:** These links are the deployed Streamlit frontends. Each frontend sends images to a FastAPI inference endpoint. For deployed inference to work, the Streamlit app must be configured with a publicly reachable FastAPI URL in its **FastAPI Endpoint** field or deployment configuration. A `127.0.0.1` or `localhost` endpoint only works on the same machine running the backend.
+
 ## Applications
 
 | Application | Input | Detection | Backend endpoint | UI |
@@ -116,6 +128,63 @@ pip install -r requirements.txt
 ```
 
 The shared `requirements.txt` contains the core FastAPI, Streamlit, Ultralytics, image-processing, and numerical dependencies used by the suite.
+
+## Deployment
+
+Each domain is deployed as two connected services:
+
+1. **Render:** hosts the FastAPI backend, loads the domain-specific YOLOv11 model, and exposes the prediction API.
+2. **Streamlit Community Cloud:** hosts the frontend, accepts image uploads, and displays the annotated results.
+
+```text
+User -> Streamlit frontend -> Render FastAPI backend -> YOLOv11 model
+```
+
+### Deploy the Streamlit frontend
+
+Deploy each application separately on [Streamlit Community Cloud](https://streamlit.io/cloud):
+
+| App | Repository folder | Main file |
+|---|---|---|
+| Brain Tumor | `brain-tumor-detection` | `app.py` |
+| Skin Acne | `skin-acne-detection` | `app.py` |
+| Weapon | `weapon-detection` | `app.py` |
+
+For each deployment:
+
+1. Create or select the GitHub repository containing this project.
+2. Create a new Streamlit app and select the relevant folder and `app.py` file.
+3. Set the Python version and install dependencies from the selected app's `requirements.txt` or the repository-level `requirements.txt`.
+4. Deploy the app and copy its public URL.
+5. Set the **FastAPI Endpoint** in the sidebar to the matching public Render backend URL:
+  - Brain tumor: `https://<brain-backend>/predict`
+  - Skin acne: `https://<acne-backend>/predict`
+  - Weapon: `https://<weapon-backend>/api/v1/detect`
+
+### Deploy the FastAPI backend on Render
+
+Create one Render Web Service for each backend. Use the relevant application folder as the service root and this start command:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+The model file must be included in the service's `models/` directory. After each Render service is deployed, verify its health endpoint before connecting Streamlit:
+
+```text
+https://<backend-domain>/
+```
+
+The Render backend must allow HTTPS requests from the Streamlit frontend and have enough memory to load its YOLOv11 weights. Free hosting plans may sleep when idle, so the first prediction can take longer after wake-up.
+
+### Deployment checklist
+
+- Confirm each model file is committed and available at runtime.
+- Confirm the backend health endpoint returns an online status.
+- Use the correct endpoint path for the selected domain.
+- Replace any local `127.0.0.1` endpoint in a deployed frontend.
+- Test one valid image and one unsupported file before sharing the app link.
+- Do not expose private API keys or credentials in the repository.
 
 ## Running an Application
 
