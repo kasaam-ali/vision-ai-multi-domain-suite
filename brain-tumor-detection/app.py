@@ -24,7 +24,7 @@ confidence_val = st.sidebar.slider(
     help="Adjust threshold to detect faint tumor regions."
 )
 
-api_url = st.sidebar.text_input("FastAPI Endpoint", "http://127.0.0.1:8000/predict")
+api_url = st.sidebar.text_input("FastAPI Endpoint", "https://brain-tumor-dau6.onrender.com/predict")
 
 # Main UI
 uploaded_file = st.file_uploader("Upload Brain MRI Scan (JPG, PNG)", type=["jpg", "jpeg", "png"])
