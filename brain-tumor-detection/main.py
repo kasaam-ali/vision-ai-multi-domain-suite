@@ -1,69 +1,94 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from starlette.concurrency import run_in_threadpool
-from contextlib import asynccontextmanager
-import numpy as np 
-import cv2
+from fastapi import FastAPI, File, UploadFile, Query, HTTPException
 from ultralytics import YOLO
-from PIL import Image 
-import io 
-import os
-
-models = {}
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    model_path = "models/best.pt" if os.path.exists("models/best.pt") else "best.pt"
-    print(f"Loading Brain Tumor Detection Model from {model_path}...")
-    try:
-        models["brain_tumor"] = YOLO(model_path)
-        print("Brain Tumor Detection Model loaded successfully!")
-    except Exception as e:
-        print(f"Warning: Could not load model from {model_path}: {e}")
-    yield
-    models.clear()
-    print("Model resources cleared.")
+from PIL import Image
+from pathlib import Path
+import io
+import base64
 
 app = FastAPI(
     title="Brain Tumor Detection API",
-    version="1.0.0",
-    lifespan=lifespan
+    description="FastAPI Backend for YOLOv11 Brain Tumor MRI Detection",
+    version="1.0"
 )
 
+# Robust Path Resolution: checks for best.pt or best (4).pt automatically
+CURRENT_DIR = Path(__file__).resolve().parent
+MODELS_DIR = CURRENT_DIR / "models"
 
-@app.get("/heath")
+model_file = None
+for candidate in ["best.pt", "best (4).pt"]:
+    p = MODELS_DIR / candidate
+    if p.exists():
+        model_file = p
+        break
+
+if not model_file:
+    # Check root models directory as fallback
+    fallback = Path("models/best.pt")
+    if fallback.exists():
+        model_file = fallback
+    else:
+        raise FileNotFoundError(f"Model file not found in {MODELS_DIR}. Please place 'best.pt' inside models folder.")
+
+# Load model
+model = YOLO(str(model_file))
+print(f"Loaded YOLO Model from: {model_file}")
+print(f"Classes: {model.names}")
+
+
+@app.get("/")
 def health_check():
-    return {"status": "online", "message": "API is Working"}
+    return {
+        "status": "online",
+        "model": "YOLOv11 Brain Tumor Detector",
+        "classes": model.names
+    }
 
-@app.post("/api/v1/detect")
-async def predict_tumor(file: UploadFile = File(...)):
+
+@app.post("/predict")
+async def predict_tumor(
+    file: UploadFile = File(...),
+    confidence: float = Query(0.25, ge=0.01, le=1.0, description="Confidence threshold")
+):
     if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Please upload a valid image file.")
-    
-    if "brain_tumor" not in models:
-        raise HTTPException(status_code=500, detail="Brain tumor model is not loaded.")
-        
+        raise HTTPException(status_code=400, detail="Sirf image files upload karein.")
+
     try:
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-        image_np = np.array(image)
-        
-        model = models["brain_tumor"]
-        results = await run_in_threadpool(model.predict, image_np, conf=0.25, imgsz=640)
-        
-        predictions = []
-        for box in results[0].boxes:
-            predictions.append({
-                'bbox': box.xyxy[0].tolist(),
-                'confidence': float(box.conf[0]),
-                'class_id': int(box.cls[0]),
-                'class_name': models['brain_tumor'].names[int(box.cls[0])]
-            })
-        
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # YOLOv11 Inference
+        results = model.predict(source=image, conf=confidence, imgsz=640)
+        result = results[0]
+
+        # Extract Detections
+        detections = [
+            {
+                "bbox": [round(coord, 2) for coord in box.xyxy[0].tolist()],
+                "confidence": round(float(box.conf[0]), 4),
+                "class_id": int(box.cls[0]),
+                "class_name": model.names[int(box.cls[0])]
+            }
+            for box in result.boxes
+        ]
+
+        # Convert BGR Plot to RGB
+        annotated_bgr = result.plot()
+        annotated_rgb = annotated_bgr[:, :, ::-1]
+        annotated_pil = Image.fromarray(annotated_rgb)
+
+        # Convert to Base64
+        buffer = io.BytesIO()
+        annotated_pil.save(buffer, format="JPEG")
+        encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
         return {
-            "status": "success",
-            "filename": file.filename,
-            "total_detections": len(predictions),
-            "predictions": predictions
+            "success": True,
+            "tumor_detected": bool(len(detections) > 0),
+            "total_detections": len(detections),
+            "detections": detections,
+            "image_base64": encoded_image
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference error: {str(e)}")

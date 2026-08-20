@@ -1,41 +1,78 @@
 import streamlit as st
-import io
 import requests
-from PIL import Image,ImageDraw,ImageFont
+from PIL import Image
+import io
+import base64
 
-st.set_page_config(page_title="Brain Tumor Detection",page_icon='🧠',layout="wide")
+st.set_page_config(
+    page_title="Brain Tumor MRI Detection",
+    page_icon="🧠",
+    layout="wide"
+)
+
 st.title("🧠 Brain Tumor Detection System")
-st.markdown('Upload a brain MRI image to detect potential tumor')
-st.sidebar.header("configuration")
-api_url=st.sidebar.text_input('Fastapi Endpoint',value="http://127.0.0.1:8000/api/v1/detect")
-confidence_threshold=st.sidebar.slider("Confidence Threshold",min_value=0.05,max_value=1.0,value=0.15,step=0.05)
-uploaded_file=st.file_uploader("choose a brain MRI image",type=['jpg','png','jpeg'])
+st.markdown("Upload a Brain MRI scan to localize and classify brain tumors using YOLOv11.")
+
+# Sidebar Settings
+st.sidebar.header("⚙️ Settings")
+confidence_val = st.sidebar.slider(
+    "Detection Confidence Threshold",
+    min_value=0.05,
+    max_value=1.0,
+    value=0.25,
+    step=0.05,
+    help="Adjust threshold to detect faint tumor regions."
+)
+
+api_url = st.sidebar.text_input("FastAPI Endpoint", "http://127.0.0.1:8000/predict")
+
+# Main UI
+uploaded_file = st.file_uploader("Upload Brain MRI Scan (JPG, PNG)", type=["jpg", "jpeg", "png"])
+
 if uploaded_file is not None:
-    col1,col2=st.columns(2)
-    image=Image.open(uploaded_file).convert("RGB")
+    col1, col2 = st.columns(2)
+
     with col1:
-        st.subheader("Original Image")
-        st.image(image,use_container_width=True)
-        if st.button("Detect Tumor"):
-            with st.spinner("Analyzing image through backend API..."):
-                 img_byte_arr = io.BytesIO()
-                 image.save(img_byte_arr, format='PNG')
-                 img_bytes=img_byte_arr.getvalue()
-                 files={'file':(uploaded_file.name,img_bytes,'image/png')}
-                 response=requests.post(api_url,files=files)
-                 if response.status_code==200:
-                     data=response.json()
-                     predictions=data.get('predictions',[])
-                     total_detections=data.get('total_detections',0)
-                     draw_image=image.copy()
-                     draw = ImageDraw.Draw(draw_image)
-                     for pred in predictions:
-                         bbox=pred['bbox']
-                         label=f'{pred['class_name']}: {pred['confidence']:.2f}'
-                         draw.rectangle(bbox,outline='red',width=3)
-                         draw.text((bbox[0],max(0,bbox[1]-15)),label,fill='red')
-                     
-                     with col2:
-                         st.subheader('Detection Result')
-                         st.image(draw_image,use_container_width=True)
-                         st.write(f'Total Detections: {total_detections}')
+        st.subheader("Original MRI Scan")
+        input_image = Image.open(uploaded_file)
+        st.image(input_image, use_container_width=True)
+
+    if st.button("🔬 Analyze MRI Scan", type="primary", use_container_width=True):
+        with st.spinner("Processing MRI scan via FastAPI..."):
+            try:
+                uploaded_file.seek(0)
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                params = {"confidence": confidence_val}
+
+                response = requests.post(api_url, files=files, params=params)
+
+                if response.status_code == 200:
+                    data = response.json()
+
+                    total_count = data.get("total_detections", len(data.get("detections", [])))
+                    has_tumor = data.get("tumor_detected", total_count > 0)
+                    encoded_img = data.get("image_base64", None)
+                    detections = data.get("detections", [])
+
+                    with col2:
+                        st.subheader("Detection Result")
+                        if encoded_img:
+                            img_bytes = base64.b64decode(encoded_img)
+                            result_image = Image.open(io.BytesIO(img_bytes))
+                            st.image(result_image, use_container_width=True)
+
+                    if has_tumor:
+                        st.error(f"⚠️ **Tumor Detected!** Total Regions Found: **{total_count}**")
+                    else:
+                        st.success("✅ **No Tumor Detected** at this confidence threshold.")
+
+                    if total_count > 0:
+                        with st.expander("📋 View Bounding Boxes & Class Predictions"):
+                            st.json(detections)
+                else:
+                    st.error(f"API Error ({response.status_code}): {response.text}")
+
+            except requests.exceptions.ConnectionError:
+                st.error("❌ FastAPI Server offline hai. Terminal mein pehle backend start karein: `uvicorn main:app --reload`")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
