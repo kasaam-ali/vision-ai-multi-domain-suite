@@ -29,8 +29,6 @@ app = FastAPI(
 @app.get("/")
 def health_check():
     return {"status": "online", "message": "Weapon Detection Service is running"}
-
-@app.post("/predict")
 @app.post("/api/v1/detect")
 async def detect_weapons(file: UploadFile = File(...)):
     # Validate uploaded file type
