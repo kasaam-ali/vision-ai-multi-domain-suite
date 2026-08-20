@@ -24,7 +24,7 @@ confidence_val = st.sidebar.slider(
     help="Kam confidence faint acne spots ko detect karne ke liye use karein."
 )
 
-api_url = st.sidebar.text_input("FastAPI Endpoint", "http://127.0.0.1:8000/predict")
+api_url = st.sidebar.text_input("FastAPI Endpoint", "https://acne-detection-zyrg.onrender.com/predict")
 
 # Main Interface
 uploaded_file = st.file_uploader("Upload Skin Image", type=["jpg", "jpeg", "png"])
