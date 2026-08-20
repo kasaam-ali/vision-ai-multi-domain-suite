@@ -14,7 +14,7 @@ st.markdown("Upload an X-Ray baggage image to detect potential weapon threats vi
 
 # Sidebar Settings
 st.sidebar.header("Configuration")
-api_url = st.sidebar.text_input("FastAPI Endpoint", value="http://127.0.0.1:8000/api/v1/detect")
+api_url = st.sidebar.text_input("FastAPI Endpoint", value="https://vision-ai-multi-domain-suite.onrender.com/detect")
 
 uploaded_file = st.file_uploader("Choose an X-Ray Image...", type=["jpg", "jpeg", "png"])
 
